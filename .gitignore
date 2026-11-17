@@ -1,0 +1,18 @@
+# python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# secrets (kabhi GitHub par mat daalna!)
+.streamlit/secrets.toml
+.env
+
+# app ka data
+data/*.db
+uploads/*
+!uploads/.gitkeep
+
+.vscode/
+.idea/
+.DS_Store
