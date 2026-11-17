@@ -1,7 +1,12 @@
 # config.py
 # all the settings are kept in one place so we don't have to change the code again and again
 
-MODEL_NAME = "gemini-2.5-flash"
+# Gemini model name. You can also change it without editing the code by setting
+# GEMINI_MODEL in secrets.toml or as an environment variable.
+MODEL_NAME = "gemini-3.8-flash"
+
+# if the main model gives a 404 (not found), these are tried one by one
+FALLBACK_MODELS = ["gemini-2.5-flash"]
 
 # center of Kota (the map starts from here)
 DEFAULT_LAT = 25.1825

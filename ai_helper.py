@@ -10,7 +10,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-from config import MODEL_NAME, ISSUE_TYPES, URGENCY_LIST
+from config import FALLBACK_MODELS, ISSUE_TYPES, MODEL_NAME, URGENCY_LIST
 
 
 def get_api_key(typed_key):
@@ -29,19 +29,38 @@ def get_client(api_key):
     return genai.Client(api_key=api_key)
 
 
+def get_model_name():
+    # first secrets.toml, then environment variable, then the default from config.py
+    try:
+        if "GEMINI_MODEL" in st.secrets:
+            return st.secrets["GEMINI_MODEL"]
+    except Exception:
+        pass
+    return os.environ.get("GEMINI_MODEL", MODEL_NAME)
+
+
 def call_gemini(client, contents, config):
+    # tries the main model first, if it is not found (404) the fallback models are tried
     # if the server is busy (503) or the limit is hit (429), we try up to 3 times
+    models_to_try = [get_model_name()]
+    for m in FALLBACK_MODELS:
+        if m not in models_to_try:
+            models_to_try.append(m)
+
     last_error = None
-    for attempt in range(3):
-        try:
-            return client.models.generate_content(model=MODEL_NAME, contents=contents, config=config)
-        except Exception as e:
-            last_error = e
-            msg = str(e)
-            if "503" in msg or "429" in msg or "UNAVAILABLE" in msg:
-                time.sleep(2)
-            else:
-                raise
+    for model in models_to_try:
+        for attempt in range(3):
+            try:
+                return client.models.generate_content(model=model, contents=contents, config=config)
+            except Exception as e:
+                last_error = e
+                msg = str(e)
+                if "404" in msg or "NOT_FOUND" in msg:
+                    break              # go to the next model
+                if "503" in msg or "429" in msg or "UNAVAILABLE" in msg:
+                    time.sleep(2)
+                else:
+                    raise
     raise last_error
 
 
@@ -117,7 +136,7 @@ def analyze_complaint(client, user_text, img, name, address, lat, lon):
     if img is not None:
         contents.append(img)
 
-    config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.3)
+    config = types.GenerateContentConfig(response_mime_type="application/json")
     res = call_gemini(client, contents, config)
     data = parse_json(res.text)
 
@@ -213,7 +232,6 @@ def chat_turn(client, history, user_message, draft_text):
     config = types.GenerateContentConfig(
         system_instruction=CHAT_SYSTEM_PROMPT,
         response_mime_type="application/json",
-        temperature=0.4,
     )
     res = call_gemini(client, contents, config)
 
@@ -245,7 +263,7 @@ def transcribe_audio(client, audio_bytes):
               "Write Hindi words in Devanagari. Return only the transcript, nothing else. "
               "If there is no speech, return an empty text.")
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
-    config = types.GenerateContentConfig(temperature=0)
+    config = types.GenerateContentConfig()
     res = call_gemini(client, [prompt, audio_part], config)
     if not res.text:
         return ""
